@@ -17,7 +17,8 @@ im Blick behält, Antwortentwürfe selbst erstellt und diese erst nach Prüfung 
   anlegen, Entwürfe diktieren/überarbeiten, Smart Home). **Senden** verlangt Entsperren / Fingerabdruck.
 
 ### 2.2 Mail
-- Konten: **Gmail** und **ein weiteres IMAP/SMTP-Konto** (Zugangsdaten in den App-Einstellungen).
+- Konten: **Gmail** und **ein weiteres IMAP/SMTP-Konto** – beide per IMAP/SMTP, Gmail mit **App-Passwort**
+  (Zugangsdaten in den App-Einstellungen).
 - Klassifizierung jeder neuen Mail: antwortbedürftig / wichtig / Info / Newsletter-Werbung.
 - **Automatischer Antwortentwurf nur, wenn eine Antwort nötig ist.**
 - **Schreibstil** wird aus den eigenen gesendeten Mails gelernt (Anrede, Du/Sie, Grußformel, Länge).
@@ -66,5 +67,7 @@ minSdk 31 · targetSdk aktuell.
 5. **Entwürfe**: Stil-Lernen, Claude-Entwürfe, Freigabe-Workflow mit Biometrie, Versand.
 6. **Proaktiv**: Morgen-Briefing, Erinnerungen, Vorschläge aus Mails.
 
-## 7. Offene Punkte
-- Gmail-Zugriff: Gmail-API (OAuth) vs. IMAP mit App-Passwort – siehe Entscheidung.
+## 7. Entscheidungen
+- Gmail-Zugriff: **IMAP + App-Passwort** (keine wöchentliche Neu-Anmeldung wie bei der Gmail-API im Testmodus).
+- Claude-Modell: `claude-opus-5-5` (in den Einstellungen änderbar), mit serverseitigem Refusal-Fallback.
+- Sprachagent: Tool-Use-Schleife auf dem Handy (Messages API); ohne Claude/Netz einfache lokale Befehle.

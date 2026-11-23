@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:recognitionService="at.hochalex.assistent.voice.AssistantRecognitionService"
+    android:sessionService="at.hochalex.assistent.voice.AssistantSessionService"
+    android:settingsActivity="at.hochalex.assistent.ui.MainActivity"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true"
+    android:supportsLocalInteraction="true" />
