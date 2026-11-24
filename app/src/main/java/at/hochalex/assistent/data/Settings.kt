@@ -54,6 +54,8 @@ data class AppSettings(
     /** Name der TTS-Stimme, leer = automatisch beste deutsche Stimme. */
     val ttsVoice: String = "",
     val ttsRate: Float = 1.0f,
+    /** Paketname des Sprachausgabe-Moduls, leer = Android-Standard. */
+    val ttsEngine: String = "",
 ) {
     val claudeConfigured get() = claudeApiKey.isNotBlank()
     val haConfigured get() = haUrl.isNotBlank() && haToken.isNotBlank()
@@ -104,6 +106,7 @@ class SettingsRepository(context: Context) {
             styleUpdatedAt = prefs.getLong("styleUpdatedAt", 0),
             ttsVoice = prefs.getString("ttsVoice", "")!!,
             ttsRate = prefs.getFloat("ttsRate", 1.0f),
+            ttsEngine = prefs.getString("ttsEngine", "")!!,
         )
     }
 
@@ -128,6 +131,7 @@ class SettingsRepository(context: Context) {
             .putLong("styleUpdatedAt", s.styleUpdatedAt)
             .putString("ttsVoice", s.ttsVoice)
             .putFloat("ttsRate", s.ttsRate)
+            .putString("ttsEngine", s.ttsEngine)
             .apply()
         cached = null
     }

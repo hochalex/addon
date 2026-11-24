@@ -25,6 +25,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import kotlin.math.roundToInt
 import androidx.compose.material3.Text
@@ -117,9 +118,12 @@ fun SettingsTab() {
         }) { Text("Claude testen") }
 
         Section("Stimme")
-        VoicePicker(s.ttsVoice, s.ttsRate,
-            onVoice = { s = s.copy(ttsVoice = it) },
-            onRate = { s = s.copy(ttsRate = it) })
+        EnginePicker(s.ttsEngine) { s = s.copy(ttsEngine = it, ttsVoice = "") }
+        key(s.ttsEngine) {
+            VoicePicker(s.ttsEngine, s.ttsVoice, s.ttsRate,
+                onVoice = { s = s.copy(ttsVoice = it) },
+                onRate = { s = s.copy(ttsRate = it) })
+        }
 
         Section("Lokales Modell (on-device)")
         Text("Gemma-Modell als MediaPipe-.task-Datei (z.B. gemma-3n-E2B-it-int4.task). Wird für Mail-Analyse und private Entwürfe genutzt – nichts verlässt das Handy.",
@@ -207,10 +211,10 @@ private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit)
 }
 
 @Composable
-private fun VoicePicker(selected: String, rate: Float, onVoice: (String) -> Unit, onRate: (Float) -> Unit) {
+private fun VoicePicker(engine: String, selected: String, rate: Float, onVoice: (String) -> Unit, onRate: (Float) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val tts = remember { at.hochalex.assistent.voice.SpeechOutput(ctx, selected, rate) }
+    val tts = remember { at.hochalex.assistent.voice.SpeechOutput(ctx, selected, rate, engine) }
     DisposableEffect(Unit) { onDispose { tts.shutdown() } }
     var voices by remember { mutableStateOf<List<android.speech.tts.Voice>>(emptyList()) }
     var expanded by remember { mutableStateOf(false) }
@@ -232,7 +236,7 @@ private fun VoicePicker(selected: String, rate: Float, onVoice: (String) -> Unit
             voices.forEach { v ->
                 VoiceRow(voiceLabel(v, v.name), v.name == selected) { onVoice(v.name); preview(v.name, rate) }
             }
-            if (voices.isEmpty()) Text("Keine deutschen Stimmen gefunden. Bitte unter Android-Einstellungen → System → Sprachen → Sprachausgabe das deutsche Sprachpaket installieren.",
+            if (voices.isEmpty()) Text("Dieses Modul meldet keine einzelnen deutschen Stimmen – es wird seine eingestellte Stimme verwendet (bei SherpaTTS: in der SherpaTTS-App eine deutsche Stimme wie „Thorsten“ laden).",
                 style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -263,4 +267,24 @@ private fun voiceLabel(v: android.speech.tts.Voice?, fallback: String): String {
     val where = if (v.isNetworkConnectionRequired) "Online" else "Offline"
     val id = v.name.substringAfter("-x-").substringBefore("-").ifEmpty { v.name }
     return "${v.locale.displayCountry} · Stimme $id · $where · Qualität $quality"
+}
+
+@Composable
+private fun EnginePicker(selected: String, onSelect: (String) -> Unit) {
+    val ctx = LocalContext.current
+    var engines by remember { mutableStateOf<List<android.speech.tts.TextToSpeech.EngineInfo>>(emptyList()) }
+    DisposableEffect(Unit) {
+        var probe: android.speech.tts.TextToSpeech? = null
+        probe = android.speech.tts.TextToSpeech(ctx.applicationContext) { engines = probe?.engines.orEmpty() }
+        onDispose { probe.shutdown() }
+    }
+    Text("Sprachausgabe-Modul", style = MaterialTheme.typography.bodyMedium)
+    VoiceRow("Android-Standard", selected.isEmpty()) { onSelect("") }
+    engines.forEach { e ->
+        VoiceRow("${e.label} (${e.name})", e.name == selected) { onSelect(e.name) }
+    }
+    if (engines.none { it.name.contains("sherpa", true) || it.name.contains("woheller", true) || it.label.contains("sherpa", true) }) {
+        Text("SherpaTTS ist nicht installiert. Installiere „SherpaTTS“ (F-Droid oder GitHub woheller69/ttsEngine), lade dort eine deutsche Stimme und öffne diese Seite erneut.",
+            style = MaterialTheme.typography.bodySmall)
+    }
 }

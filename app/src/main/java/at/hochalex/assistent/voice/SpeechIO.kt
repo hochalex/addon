@@ -109,11 +109,17 @@ class SpeechInput(private val ctx: Context) {
  * Sprachausgabe (Deutsch). Wählt die beste installierte deutsche Stimme – bevorzugt Googles
  * natürliche Online-Stimmen, ohne Netz automatisch die beste Offline-Stimme.
  */
-class SpeechOutput(ctx: Context, private val voiceName: String = "", private val rate: Float = 1.0f) {
+class SpeechOutput(
+    ctx: Context,
+    private val voiceName: String = "",
+    private val rate: Float = 1.0f,
+    /** Paketname des Sprachausgabe-Moduls (z.B. SherpaTTS), leer = Systemstandard. */
+    engine: String = "",
+) {
     private val appCtx = ctx.applicationContext
     private var ready = false
     private var pendingInit: ((Boolean) -> Unit)? = null
-    private val tts: TextToSpeech = TextToSpeech(appCtx) { status ->
+    private val tts: TextToSpeech = TextToSpeech(appCtx, { status ->
         ready = status == TextToSpeech.SUCCESS
         if (ready) {
             tts.language = Locale.GERMANY
@@ -121,7 +127,10 @@ class SpeechOutput(ctx: Context, private val voiceName: String = "", private val
             tts.setSpeechRate(rate)
         }
         pendingInit?.invoke(ready)
-    }
+    }, engine.ifEmpty { null })
+
+    /** Installierte Sprachausgabe-Module (Google, SherpaTTS, …). */
+    suspend fun engines(): List<TextToSpeech.EngineInfo> = if (awaitReady()) tts.engines.orEmpty() else emptyList()
 
     private suspend fun awaitReady(): Boolean {
         if (ready) return true

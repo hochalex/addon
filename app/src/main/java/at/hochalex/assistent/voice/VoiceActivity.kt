@@ -84,7 +84,7 @@ class VoiceActivity : ComponentActivity(), AgentHost {
         setTurnScreenOn(true)
         input = SpeechInput(this)
         val st = container.settings.get()
-        output = SpeechOutput(this, st.ttsVoice, st.ttsRate)
+        output = SpeechOutput(this, st.ttsVoice, st.ttsRate, st.ttsEngine)
         gate = AuthGate(this)
         agent = VoiceAgent(container, this)
 
