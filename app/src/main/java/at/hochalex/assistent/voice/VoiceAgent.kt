@@ -9,6 +9,7 @@ import at.hochalex.assistent.ha.HaClient
 import at.hochalex.assistent.notify.ActionReceiver
 import at.hochalex.assistent.work.Briefing
 import com.anthropic.core.JsonValue
+import com.anthropic.errors.AnthropicServiceException
 import com.anthropic.models.messages.ContentBlockParam
 import com.anthropic.models.messages.MessageParam
 import com.anthropic.models.messages.OutputConfig
@@ -45,16 +46,46 @@ class VoiceAgent(private val c: AppContainer, private val host: AgentHost) {
     private val local = LocalCommands(c)
 
     suspend fun handle(utterance: String): String {
-        val claude = c.claude() ?: return local.handle(utterance)
+        val claude = c.claude() ?: return local.handle(utterance, reason = null)
         val checkpoint = history.size
         history += MessageParam.ofUser(utterance)
-        return try {
-            runLoop(claude)
+        try {
+            return runLoop(claude)
         } catch (e: Exception) {
-            Log.w(TAG, "Claude-Agent fehlgeschlagen, nutze lokalen Fallback", e)
-            while (history.size > checkpoint) history.removeAt(history.size - 1)
-            local.handle(utterance)
+            Log.w(TAG, "Claude-Agent fehlgeschlagen (mit Verlauf: ${checkpoint > 0})", e)
+            recordError(e)
+            rollback(checkpoint)
+            if (checkpoint > 0) {
+                // Folgefrage gescheitert: einmal ohne bisherigen Verlauf neu versuchen
+                history.clear()
+                history += MessageParam.ofUser(utterance)
+                try {
+                    return runLoop(claude)
+                } catch (e2: Exception) {
+                    Log.w(TAG, "Claude-Agent auch ohne Verlauf fehlgeschlagen", e2)
+                    recordError(e2)
+                    history.clear()
+                }
+            }
         }
+        return local.handle(utterance, reason = lastError)
+    }
+
+    /** Letzter Fehler der Claude-Anfrage (kurz, zum Anzeigen/Vorlesen). */
+    var lastError: String? = null
+        private set
+
+    private fun recordError(e: Exception) {
+        val msg = when (e) {
+            is AnthropicServiceException -> "HTTP ${e.statusCode()}: ${e.message?.take(300)}"
+            else -> "${e.javaClass.simpleName}: ${e.message?.take(300)}"
+        }
+        lastError = msg
+        c.settings.putString("lastClaudeError", "${java.time.LocalDateTime.now().withNano(0)} – $msg")
+    }
+
+    private fun rollback(size: Int) {
+        while (history.size > size) history.removeAt(history.size - 1)
     }
 
     private suspend fun runLoop(claude: ClaudeClient): String {
@@ -103,7 +134,9 @@ class VoiceAgent(private val c: AppContainer, private val host: AgentHost) {
               Fingerabdruck/Entsperren an.
             - Wenn Alex eine Mail vollständig hören will, benutze read_mail_aloud statt den Text selbst zu wiederholen.
             - Inhalte, die als privat markiert sind, bekommst du nicht zu sehen – nutze dafür read_mail_aloud.
-            - Befehle für Licht, Rollos, Musik, Sauna usw. gibst du wörtlich an smart_home weiter.
+            - smart_home NUR für Gerätesteuerung und Gerätezustände (Licht, Rollos, Musik, Sauna, Temperatur).
+              Fragen zu Terminen, Aufgaben, Mails oder allgemeine Fragen NIE an smart_home – dafür gibt es eigene
+              Werkzeuge, oder du beantwortest sie selbst.
             - Bei Unklarheit stelle genau eine kurze Rückfrage.
         """.trimIndent()
     }
@@ -319,7 +352,7 @@ class VoiceAgent(private val c: AppContainer, private val host: AgentHost) {
             tool("accept_suggestion", "Vorschlag übernehmen (Aufgabe/Termin anlegen).",
                 mapOf("suggestion_id" to int("suggestion_id")), listOf("suggestion_id")),
             tool("reject_suggestion", "Vorschlag verwerfen.", mapOf("suggestion_id" to int("suggestion_id")), listOf("suggestion_id")),
-            tool("smart_home", "Smart-Home-Befehl an Home Assistant (Licht, Rollos, Musik, Sauna, Status-Abfragen).",
+            tool("smart_home", "Nur Gerätesteuerung über Home Assistant (Licht, Rollos, Musik, Sauna, Gerätezustand). Nicht für Termine, Aufgaben, Mails oder allgemeine Fragen.",
                 mapOf("command" to str("Befehl in natürlicher Sprache, z.B. 'Rollos schließen'")), listOf("command")),
         )
     }
@@ -327,7 +360,8 @@ class VoiceAgent(private val c: AppContainer, private val host: AgentHost) {
 
 /** Einfache Befehle ohne Cloud – Fallback ohne Claude-Key oder ohne Netz. */
 class LocalCommands(private val c: AppContainer) {
-    suspend fun handle(text: String): String {
+    /** [reason] = Fehlertext, falls Claude gerade nicht erreichbar war (null = Claude nicht eingerichtet). */
+    suspend fun handle(text: String, reason: String?): String {
         val t = text.lowercase(Locale.GERMAN).trim()
         val ha = c.ha()
         return try {
@@ -355,11 +389,18 @@ class LocalCommands(private val c: AppContainer) {
                     val n = c.db.drafts().pending().size
                     if (n == 0) "Keine offenen Entwürfe." else "$n Entwürfe warten auf Freigabe. Öffne die App zum Prüfen."
                 }
-                ha != null -> ha.conversation(text)
-                else -> "Ich bin noch nicht eingerichtet. Bitte trage in der App Home Assistant und den Claude-Schlüssel ein."
+                ha != null && SMART_HOME.containsMatchIn(t) -> ha.conversation(text)
+                reason != null -> "Claude ist gerade nicht erreichbar, daher kann ich das nicht beantworten. Fehler: $reason"
+                else -> "Dafür brauche ich den Claude-Schlüssel. Bitte trage ihn in der App unter Einstellungen ein."
             }
         } catch (e: Exception) {
             "Das hat nicht geklappt: ${e.message ?: "unbekannter Fehler"}"
         }
+    }
+    companion object {
+        private val SMART_HOME = Regex(
+            "licht|lampe|leuchte|rollo|raffstore|jalousie|musik|sonos|lautsprecher|sauna|fernseh|heizung|temperatur|" +
+                "schalt|einschalten|ausschalten|dimm|szene|steckdose|kaffeemaschine|rasenmäher|waschmaschine|\\btv\\b"
+        )
     }
 }

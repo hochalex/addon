@@ -130,6 +130,8 @@ class SettingsRepository(context: Context) {
     // Laufzeit-Status (kein Teil der Benutzereinstellungen)
     fun getLong(key: String, def: Long = 0) = prefs.getLong("state_$key", def)
     fun putLong(key: String, value: Long) = prefs.edit().putLong("state_$key", value).apply()
+    fun getString(key: String): String? = prefs.getString("state_$key", null)
+    fun putString(key: String, value: String) = prefs.edit().putString("state_$key", value).apply()
     fun getStringSet(key: String): Set<String> = prefs.getStringSet("state_$key", emptySet()) ?: emptySet()
     fun putStringSet(key: String, value: Set<String>) = prefs.edit().putStringSet("state_$key", value).apply()
 }

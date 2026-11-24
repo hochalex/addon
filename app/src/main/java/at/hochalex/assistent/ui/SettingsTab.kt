@@ -103,6 +103,9 @@ fun SettingsTab() {
         Section("Claude (Antwortentwürfe & Sprachagent)")
         Field("API-Schlüssel", s.claudeApiKey, secret = true) { s = s.copy(claudeApiKey = it) }
         Field("Modell", s.claudeModel) { s = s.copy(claudeModel = it) }
+        c.settings.getString("lastClaudeError")?.let {
+            Text("Letzter Claude-Fehler: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         OutlinedButton(enabled = !busy, onClick = {
             run("Claude") { at.hochalex.assistent.ai.ClaudeClient(s.claudeApiKey, s.claudeModel).test() }
         }) { Text("Claude testen") }
