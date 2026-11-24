@@ -106,6 +106,23 @@ class MailClient(private val cfg: MailAccountConfig) {
         }
     }
 
+    /**
+     * Markiert eine Mail im Posteingang als gelesen (auf dem Server, also auch in Gmail sichtbar).
+     * [expectedValidity] schützt davor, nach einem UID-Reset eine falsche Mail zu markieren.
+     */
+    fun markSeen(uid: Long, expectedValidity: Long): Boolean = withStore { store ->
+        val folder = store.getFolder("INBOX") as IMAPFolder
+        folder.open(Folder.READ_WRITE)
+        try {
+            if (expectedValidity != 0L && folder.uidValidity != expectedValidity) return@withStore false
+            val msg = folder.getMessageByUID(uid) ?: return@withStore false
+            msg.setFlag(Flags.Flag.SEEN, true)
+            true
+        } finally {
+            runCatching { folder.close(false) }
+        }
+    }
+
     /** Texte der zuletzt gesendeten Mails (für das Stil-Lernen). */
     fun fetchSentBodies(count: Int = 25): List<Pair<String, String>> = withStore { store ->
         val sent = findSpecialFolder(store, "\\Sent") ?: return@withStore emptyList()

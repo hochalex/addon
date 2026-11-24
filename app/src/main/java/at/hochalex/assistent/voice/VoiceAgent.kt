@@ -225,12 +225,14 @@ class VoiceAgent(private val c: AppContainer, private val host: AgentHost) {
             }
             "get_mail" -> {
                 val m = c.db.mails().get(l("mail_id") ?: error("mail_id fehlt")) ?: error("Mail nicht gefunden")
+                if (!m.isPrivate) c.markRead(m) // Inhalt wird gleich zusammengefasst/besprochen
                 if (m.isPrivate) "Mail von ${m.senderLabel}, Betreff ${m.subject}. [Privat – Inhalt wird nicht an die Cloud gegeben. Nutze read_mail_aloud.]"
                 else "Von: ${m.fromName} <${m.fromAddress}>\nBetreff: ${m.subject}\nEmpfangen: ${fmtTime(m.receivedAt)}\n\n${m.body.take(8000)}"
             }
             "read_mail_aloud" -> {
                 val m = c.db.mails().get(l("mail_id") ?: error("mail_id fehlt")) ?: error("Mail nicht gefunden")
                 host.speakDirect("Mail von ${m.senderLabel}. Betreff: ${m.subject}. ${m.body.take(2500)}")
+                c.markRead(m)
                 "Die Mail wurde vorgelesen."
             }
             "list_drafts" -> {
@@ -346,9 +348,9 @@ class VoiceAgent(private val c: AppContainer, private val host: AgentHost) {
             tool("list_mails", "Zuletzt empfangene Mails mit Kurzfassung (id, Absender, Betreff).",
                 mapOf("filter" to mapOf("type" to "string", "enum" to listOf("relevant", "all"), "description" to "relevant = wichtig oder Antwort nötig"),
                     "limit" to int("Anzahl, Standard 15"))),
-            tool("get_mail", "Vollständigen Inhalt einer Mail abrufen (zum Zusammenfassen oder Beantworten).",
+            tool("get_mail", "Vollständigen Inhalt einer Mail abrufen (zum Zusammenfassen oder Beantworten). Markiert die Mail als gelesen.",
                 mapOf("mail_id" to int("id aus list_mails")), listOf("mail_id")),
-            tool("read_mail_aloud", "Mail direkt wörtlich vorlesen (Inhalt geht nicht an die Cloud).",
+            tool("read_mail_aloud", "Mail direkt wörtlich vorlesen (Inhalt geht nicht an die Cloud). Markiert die Mail als gelesen.",
                 mapOf("mail_id" to int("id aus list_mails")), listOf("mail_id")),
             tool("list_drafts", "Offene Antwortentwürfe mit Text anzeigen."),
             tool("create_reply_draft", "Antwortentwurf zu einer Mail erstellen.",
