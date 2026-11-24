@@ -21,6 +21,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import kotlin.math.roundToInt
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -110,6 +116,11 @@ fun SettingsTab() {
             run("Claude") { at.hochalex.assistent.ai.ClaudeClient(s.claudeApiKey, s.claudeModel).test() }
         }) { Text("Claude testen") }
 
+        Section("Stimme")
+        VoicePicker(s.ttsVoice, s.ttsRate,
+            onVoice = { s = s.copy(ttsVoice = it) },
+            onRate = { s = s.copy(ttsRate = it) })
+
         Section("Lokales Modell (on-device)")
         Text("Gemma-Modell als MediaPipe-.task-Datei (z.B. gemma-3n-E2B-it-int4.task). Wird für Mail-Analyse und private Entwürfe genutzt – nichts verlässt das Handy.",
             style = MaterialTheme.typography.bodySmall)
@@ -193,4 +204,63 @@ private fun Toggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit)
         Text(label, Modifier.weight(1f))
         Switch(checked, onChange)
     }
+}
+
+@Composable
+private fun VoicePicker(selected: String, rate: Float, onVoice: (String) -> Unit, onRate: (Float) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val tts = remember { at.hochalex.assistent.voice.SpeechOutput(ctx, selected, rate) }
+    DisposableEffect(Unit) { onDispose { tts.shutdown() } }
+    var voices by remember { mutableStateOf<List<android.speech.tts.Voice>>(emptyList()) }
+    var expanded by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { voices = tts.germanVoices() }
+
+    fun preview(name: String, r: Float) = scope.launch {
+        tts.applyVoice(name); tts.setRate(r)
+        tts.speak("Guten Morgen Alex. Heute um zehn Uhr hast du einen Termin beim Zahnarzt.")
+    }
+
+    Text("Wähle eine natürliche Stimme. „Online“-Stimmen klingen am besten; ohne Netz wird automatisch die beste Offline-Stimme genutzt.",
+        style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(onClick = { expanded = !expanded }) {
+        Text(if (selected.isEmpty()) "Automatisch (beste Stimme)" else voiceLabel(voices.firstOrNull { it.name == selected }, selected))
+    }
+    if (expanded) {
+        Column(Modifier.fillMaxWidth()) {
+            VoiceRow("Automatisch (beste Stimme)", selected.isEmpty()) { onVoice(""); preview("", rate) }
+            voices.forEach { v ->
+                VoiceRow(voiceLabel(v, v.name), v.name == selected) { onVoice(v.name); preview(v.name, rate) }
+            }
+            if (voices.isEmpty()) Text("Keine deutschen Stimmen gefunden. Bitte unter Android-Einstellungen → System → Sprachen → Sprachausgabe das deutsche Sprachpaket installieren.",
+                style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    Text("Sprechtempo: ${"%.2f".format(rate)}×", style = MaterialTheme.typography.bodyMedium)
+    Slider(value = rate, onValueChange = { onRate((it * 20).roundToInt() / 20f) }, valueRange = 0.7f..1.5f,
+        onValueChangeFinished = { preview(selected, rate) })
+    OutlinedButton(onClick = { preview(selected, rate) }) { Text("Probehören") }
+    OutlinedButton(onClick = {
+        runCatching { ctx.startActivity(android.content.Intent("com.android.settings.TTS_SETTINGS").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }) { Text("Android-Sprachausgabe (Stimmen herunterladen)") }
+}
+
+@Composable
+private fun VoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = selected, onClick = onClick)
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+private fun voiceLabel(v: android.speech.tts.Voice?, fallback: String): String {
+    if (v == null) return fallback
+    val quality = when {
+        v.quality >= android.speech.tts.Voice.QUALITY_VERY_HIGH -> "sehr hoch"
+        v.quality >= android.speech.tts.Voice.QUALITY_HIGH -> "hoch"
+        else -> "normal"
+    }
+    val where = if (v.isNetworkConnectionRequired) "Online" else "Offline"
+    val id = v.name.substringAfter("-x-").substringBefore("-").ifEmpty { v.name }
+    return "${v.locale.displayCountry} · Stimme $id · $where · Qualität $quality"
 }

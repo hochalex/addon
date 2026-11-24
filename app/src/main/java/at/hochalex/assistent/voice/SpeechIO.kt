@@ -10,6 +10,9 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
 import java.util.UUID
@@ -102,13 +105,21 @@ class SpeechInput(private val ctx: Context) {
     }
 }
 
-/** Sprachausgabe (Deutsch). */
-class SpeechOutput(ctx: Context) {
+/**
+ * Sprachausgabe (Deutsch). Wählt die beste installierte deutsche Stimme – bevorzugt Googles
+ * natürliche Online-Stimmen, ohne Netz automatisch die beste Offline-Stimme.
+ */
+class SpeechOutput(ctx: Context, private val voiceName: String = "", private val rate: Float = 1.0f) {
+    private val appCtx = ctx.applicationContext
     private var ready = false
     private var pendingInit: ((Boolean) -> Unit)? = null
-    private val tts: TextToSpeech = TextToSpeech(ctx.applicationContext) { status ->
+    private val tts: TextToSpeech = TextToSpeech(appCtx) { status ->
         ready = status == TextToSpeech.SUCCESS
-        if (ready) tts.language = Locale.GERMAN
+        if (ready) {
+            tts.language = Locale.GERMANY
+            applyVoice(voiceName)
+            tts.setSpeechRate(rate)
+        }
         pendingInit?.invoke(ready)
     }
 
@@ -117,8 +128,39 @@ class SpeechOutput(ctx: Context) {
         return suspendCancellableCoroutine { cont -> pendingInit = { if (cont.isActive) cont.resume(it) } }
     }
 
-    suspend fun speak(text: String) {
+    /** Alle installierten deutschen Stimmen, beste zuerst. */
+    suspend fun germanVoices(): List<Voice> {
+        if (!awaitReady()) return emptyList()
+        return rankVoices(tts.voices.orEmpty())
+    }
+
+    private fun rankVoices(all: Collection<Voice>): List<Voice> =
+        all.filter { it.locale.language == "de" && TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features }
+            .sortedWith(
+                compareByDescending<Voice> { it.quality }
+                    .thenByDescending { it.locale.country == "DE" || it.locale.country == "AT" }
+                    .thenByDescending { it.isNetworkConnectionRequired } // Online-Stimmen klingen natürlicher
+                    .thenBy { it.name }
+            )
+
+    private fun online(): Boolean {
+        val cm = appCtx.getSystemService(ConnectivityManager::class.java) ?: return false
+        return cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    }
+
+    /** Gewählte Stimme setzen – ohne Netz wird auf die beste Offline-Stimme ausgewichen. */
+    fun applyVoice(name: String) {
+        val voices = rankVoices(tts.voices.orEmpty())
+        val usable = if (online()) voices else voices.filterNot { it.isNetworkConnectionRequired }
+        val chosen = usable.firstOrNull { it.name == name } ?: usable.firstOrNull()
+        if (chosen != null) tts.voice = chosen
+    }
+
+    fun setRate(r: Float) { tts.setSpeechRate(r) }
+
+        suspend fun speak(text: String) {
         if (text.isBlank() || !awaitReady()) return
+        applyVoice(voiceName.ifEmpty { tts.voice?.name.orEmpty() })
         val id = UUID.randomUUID().toString()
         suspendCancellableCoroutine { cont ->
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {

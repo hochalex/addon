@@ -51,6 +51,9 @@ data class AppSettings(
     val notifyImportant: Boolean = true,
     val styleProfile: String = "",
     val styleUpdatedAt: Long = 0,
+    /** Name der TTS-Stimme, leer = automatisch beste deutsche Stimme. */
+    val ttsVoice: String = "",
+    val ttsRate: Float = 1.0f,
 ) {
     val claudeConfigured get() = claudeApiKey.isNotBlank()
     val haConfigured get() = haUrl.isNotBlank() && haToken.isNotBlank()
@@ -99,6 +102,8 @@ class SettingsRepository(context: Context) {
             notifyImportant = prefs.getBoolean("notifyImportant", d.notifyImportant),
             styleProfile = prefs.getString("styleProfile", "")!!,
             styleUpdatedAt = prefs.getLong("styleUpdatedAt", 0),
+            ttsVoice = prefs.getString("ttsVoice", "")!!,
+            ttsRate = prefs.getFloat("ttsRate", 1.0f),
         )
     }
 
@@ -121,6 +126,8 @@ class SettingsRepository(context: Context) {
             .putBoolean("notifyImportant", s.notifyImportant)
             .putString("styleProfile", s.styleProfile)
             .putLong("styleUpdatedAt", s.styleUpdatedAt)
+            .putString("ttsVoice", s.ttsVoice)
+            .putFloat("ttsRate", s.ttsRate)
             .apply()
         cached = null
     }
