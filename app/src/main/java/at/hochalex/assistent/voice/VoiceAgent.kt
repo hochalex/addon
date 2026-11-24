@@ -48,7 +48,7 @@ class VoiceAgent(private val c: AppContainer, private val host: AgentHost) {
     suspend fun handle(utterance: String): String {
         val claude = c.claude() ?: return local.handle(utterance, reason = null)
         val checkpoint = history.size
-        history += MessageParam.ofUser(utterance)
+        history += MessageParam.ofUser(withContext(utterance))
         try {
             return runLoop(claude)
         } catch (e: Exception) {
@@ -58,7 +58,7 @@ class VoiceAgent(private val c: AppContainer, private val host: AgentHost) {
             if (checkpoint > 0) {
                 // Folgefrage gescheitert: einmal ohne bisherigen Verlauf neu versuchen
                 history.clear()
-                history += MessageParam.ofUser(utterance)
+                history += MessageParam.ofUser(withContext(utterance))
                 try {
                     return runLoop(claude)
                 } catch (e2: Exception) {
@@ -91,7 +91,7 @@ class VoiceAgent(private val c: AppContainer, private val host: AgentHost) {
     private suspend fun runLoop(claude: ClaudeClient): String {
         repeat(MAX_STEPS) {
             val params = claude.params(16000, OutputConfig.Effort.LOW)
-                .system(systemPrompt())
+                .system(system)
                 .messages(history)
                 .apply { TOOLS.forEach { addTool(it) } }
                 .build()
@@ -117,12 +117,25 @@ class VoiceAgent(private val c: AppContainer, private val host: AgentHost) {
         return "Das war mir zu komplex – bitte formuliere es einfacher."
     }
 
-    private fun systemPrompt(): String {
+    /**
+     * Der System-Prompt bleibt für das ganze Gespräch unverändert – sonst lehnt die API Folgefragen ab
+     * (Thinking-Blöcke sind an den exakten Gesprächsverlauf gebunden). Veränderliches wie Uhrzeit und
+     * Sperrstatus steht deshalb in jeder Nutzer-Nachricht (siehe [withContext]).
+     */
+    private val system: String by lazy { systemPrompt() }
+
+    /** Kontext-Vorspann für jede neue Frage (wird nur angehängt, nie nachträglich geändert). */
+    private fun withContext(utterance: String): String {
         val now = ZonedDateTime.now().format(DateTimeFormatter.ofPattern("EEEE, d. MMMM yyyy, HH:mm", Locale.GERMAN))
+        return "[Kontext: Jetzt $now (Europe/Vienna); Handy ${if (host.isLocked) "GESPERRT" else "entsperrt"}]\n$utterance"
+    }
+
+    private fun systemPrompt(): String {
         val s = c.settings.get()
         return """
-            Du bist der persönliche Sprachassistent von Alex auf seinem Android-Handy. Jetzt: $now (Europe/Vienna).
-            Handy ist ${if (host.isLocked) "GESPERRT" else "entsperrt"}.
+            Du bist der persönliche Sprachassistent von Alex auf seinem Android-Handy.
+            Jede Nachricht von Alex beginnt mit einer Zeile [Kontext: …] mit aktueller Uhrzeit und Sperrstatus –
+            das ist Systeminformation, nicht Teil seiner Frage.
             Antworte auf Deutsch, kurz und natürlich gesprochen (meist 1–3 Sätze, keine Aufzählungszeichen,
             kein Markdown) – die Antwort wird vorgelesen.
             Nutze die Werkzeuge, um Termine, Aufgaben, Mails, Entwürfe und das Smart Home zu bedienen.
